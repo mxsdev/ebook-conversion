@@ -1,0 +1,224 @@
+use std::io::Write;
+
+fn rindex(data: &[u8], chunk: &[u8], start: usize, end: usize) -> Option<usize> {
+    for i in (start..end).rev() {
+        if i + chunk.len() <= data.len() && &data[i..i + chunk.len()] == chunk {
+            return Some(i);
+        }
+    }
+    None
+}
+
+pub fn compress_palmdoc(data: &[u8]) -> Vec<u8> {
+    let mut out = Vec::new();
+    let mut i = 0;
+    let ldata = data.len();
+
+    while i < ldata {
+        if i > 10 && (ldata - i) > 10 {
+            let mut chunk = vec![];
+            let mut match_index = None;
+
+            for j in (3..=10).rev() {
+                chunk = data[i..(i + j)].to_vec();
+                if let Some(match_i) = rindex(data, &chunk, 0, i) {
+                    match_index = Some(match_i);
+                } else {
+                    continue;
+                }
+
+                if let Some(match_index) = match_index {
+                    if i - match_index <= 2047 {
+                        break;
+                    }
+                }
+
+                match_index = None;
+            }
+
+            if let Some(match_index) = match_index {
+                let n = chunk.len();
+                let m = (i - match_index) as u16;
+                let code = 0x8000 + ((m << 3) & 0x3ff8).wrapping_add((n as u16).wrapping_sub(3));
+                out.write_all(&code.to_be_bytes()).unwrap();
+                i += n;
+                continue;
+            }
+        }
+
+        let ch = data[i];
+        i += 1;
+
+        if ch == b' ' && (i + 1) < ldata {
+            let onch = data[i];
+            if onch >= 0x40 && onch < 0x80 {
+                out.write_all(&[(onch ^ 0x80) as u8]).unwrap();
+                i += 1;
+                continue;
+            }
+        }
+
+        if ch == 0 || (ch > 8 && ch < 0x80) {
+            out.write_all(&[ch]).unwrap();
+        } else {
+            let mut j = i;
+            let mut binseq = vec![ch];
+
+            while j < ldata && binseq.len() < 8 {
+                let ch = data[j];
+                let och = ch;
+
+                if och == 0 || (och > 8 && och < 0x80) {
+                    break;
+                }
+
+                binseq.push(ch);
+                j += 1;
+            }
+
+            out.write_all(&(binseq.len() as u8).to_be_bytes()).unwrap();
+            out.write_all(&binseq).unwrap();
+            i += binseq.len() - 1;
+        }
+    }
+
+    out
+}
+
+fn decompress_palmdoc(data: Vec<u8>) -> Vec<u8> {
+    let length = data.len();
+    let mut offset = 0;
+    let mut lz77: u16;
+    let mut lz77offset: usize;
+    let mut lz77length: usize;
+    let mut lz77pos: usize;
+    let mut text = Vec::new();
+    let mut textlength: usize;
+    let mut textpos: usize;
+
+    while offset < length {
+        let byte = data[offset];
+        offset += 1;
+
+        if byte == 0 {
+            // Nulls are literal
+            text.push(byte);
+        } else if byte <= 8 {
+            // Next byte is literal
+            text.extend_from_slice(&data[offset..offset + byte as usize]);
+            offset += byte as usize;
+        } else if byte <= 0x7f {
+            // Values from 0x09 through 0x7f are literal
+            text.push(byte);
+        } else if byte <= 0xbf {
+            // Data is LZ77-compressed
+            offset += 1;
+
+            if offset > length {
+                println!("WARNING: offset to LZ77 bits is outside of the data");
+                return Vec::new();
+            }
+
+            lz77 = u16::from_be_bytes([data[offset - 2], data[offset - 1]]);
+
+            // Leftmost two bits are ID bits and need to be dropped
+            lz77 &= 0x3fff;
+
+            // Length is rightmost 3 bits + 3
+            lz77length = ((lz77 & 0x0007) as usize) + 3;
+
+            // Remaining 11 bits are offset
+            lz77offset = (lz77 >> 3) as usize;
+
+            if lz77offset < 1 {
+                println!("WARNING: LZ77 decompression offset is invalid!");
+                return Vec::new();
+            }
+
+            // Getting text from the offset
+            textlength = text.len();
+            for lz77pos in 0..lz77length {
+                println!(
+                    "textlength: {}, lz77offset: {}, lz77pos: {}, current: {:?}",
+                    textlength, lz77offset, lz77pos, text
+                );
+                textpos = textlength - lz77offset;
+                text.push(text[textpos]);
+                textlength += 1;
+            }
+        } else {
+            // 0xc0 - 0xff are single characters (XOR 0x80) preceded by a space
+            text.push(b' ');
+            text.push(byte ^ 0x80);
+        }
+    }
+    text
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn get_calibre_testcases() -> Vec<(Vec<u8>, Vec<u8>)> {
+        // Test cases taken from Calibre
+        // (input, compressed_result)
+        return vec![
+            (
+                hex::decode("616263030405066d73").unwrap(),
+                hex::decode("61626304030405066d73").unwrap(),
+            ),
+            (
+                hex::decode("612062206320fe6420").unwrap(),
+                hex::decode("61e2e32001fe6420").unwrap(),
+            ),
+            (
+                hex::decode("303132333435363738396178797a326278797a3263646667666f39697579657268")
+                    .unwrap(),
+                hex::decode("303132333435363738396178797a3262802963646667666f39697579657268")
+                    .unwrap(),
+            ),
+            (
+              hex::decode("30313233343536373839617364303132333435363738396173647c79797a7a7878666668686a6a6b6b").unwrap(),
+              hex::decode("30313233343536373839617364806f80687c79797a7a7878666668686a6a6b6b").unwrap()
+            ),
+            (
+              hex::decode("6369657761636e6171206569753734332072373837712030772520203b207361206664ef0c6664786f73616320776f636a702061636f6965636f776569206f77616963206a6f63696f7761706a636976636a706f69766a706f726569766a706f617663613b207039617738373433793672373425245e245e253820").unwrap(),
+              hex::decode("6369657761636e6171e56975373433f2373837712030772520203bf361e66401ef0c6664786f736163f76f636a70e1636f6965636f776569ef77616963ea6f63698050706a63697681086f697680287265803a617663613bf03961773882f0793672373425245e245e253820").unwrap()
+            ),
+            (
+                hex::decode("61626373646661736466616263646173646f66617373").unwrap(),
+                hex::decode("61626373646661736466616263646173646f66617373").unwrap()
+            )
+        ];
+    }
+
+    #[test]
+    fn test_compress_palmdoc() {
+        for (input, expected) in get_calibre_testcases() {
+            let compressed = compress_palmdoc(&input);
+            assert_eq!(compressed, expected);
+        }
+    }
+
+    #[test]
+    fn test_decompress_palmdoc() {
+        for (expected, compressed) in get_calibre_testcases() {
+            let decompressed = decompress_palmdoc(compressed);
+            println!(
+                "decompressed: {:?}, expected: {:?}",
+                String::from_utf8_lossy(&decompressed),
+                String::from_utf8_lossy(&expected)
+            );
+            assert_eq!(decompressed, expected);
+        }
+    }
+
+    // #[test]
+    // fn test_roundtrip() {
+    //     for (input, _) in get_calibre_testcases() {
+    //         let compressed = compress_palmdoc(&input);
+    //         let decompressed = decompress_palmdoc(compressed);
+    //         assert_eq!(decompressed, input);
+    //     }
+    // }
+}
