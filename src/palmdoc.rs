@@ -46,12 +46,10 @@ pub fn compress_palmdoc(data: &[u8]) -> Vec<u8> {
         let byte = data[i];
         i += 1;
 
-        if byte == b' ' && (i + 1) < len {
-            if (0x40..0x80).contains(&data[i]) {
-                out.write_all(&[(data[i] ^ 0x80)]).unwrap();
-                i += 1;
-                continue;
-            }
+        if byte == b' ' && (i + 1) < len && (0x40..0x80).contains(&data[i]) {
+            out.write_all(&[(data[i] ^ 0x80)]).unwrap();
+            i += 1;
+            continue;
         }
 
         if byte == 0 || (byte > 8 && byte < 0x80) {
@@ -80,7 +78,7 @@ pub fn compress_palmdoc(data: &[u8]) -> Vec<u8> {
     out
 }
 
-fn decompress_palmdoc(data: Vec<u8>) -> Vec<u8> {
+pub fn decompress_palmdoc(data: Vec<u8>) -> Vec<u8> {
     // Adapted from https://metacpan.org/release/AZED/EBook-Tools-0.3.3/source/lib/EBook/Tools/PalmDoc.pm
     let len = data.len();
     let mut offset = 0;
@@ -127,11 +125,7 @@ fn decompress_palmdoc(data: Vec<u8>) -> Vec<u8> {
 
             // Getting text from the offset
             let mut textlength = uncompressed.len();
-            for lz77pos in 0..lz77length {
-                println!(
-                    "textlength: {}, lz77offset: {}, lz77pos: {}, current: {:?}",
-                    textlength, lz77offset, lz77pos, uncompressed
-                );
+            for _ in 0..lz77length {
                 let textpos = textlength - lz77offset;
                 uncompressed.push(uncompressed[textpos]);
                 textlength += 1;

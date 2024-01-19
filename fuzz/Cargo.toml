@@ -1,0 +1,33 @@
+[package]
+name = "ebook-conversion-fuzz"
+version = "0.0.0"
+publish = false
+edition = "2021"
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "0.4"
+
+[dependencies.ebook-conversion]
+path = ".."
+
+# Prevent this from interfering with workspaces
+[workspace]
+members = ["."]
+
+[profile.release]
+debug = 1
+
+[[bin]]
+name = "palmdoc_compression"
+path = "fuzz_targets/palmdoc_compression.rs"
+test = false
+doc = false
+
+[[bin]]
+name = "palmdoc_decompression"
+path = "fuzz_targets/palmdoc_decompression.rs"
+test = false
+doc = false
