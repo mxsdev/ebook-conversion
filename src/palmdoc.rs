@@ -1,21 +1,18 @@
 use std::io::Write;
 
 fn rindex(data: &[u8], chunk: &[u8], start: usize, end: usize) -> Option<usize> {
-    for i in (start..end).rev() {
-        if i + chunk.len() <= data.len() && &data[i..i + chunk.len()] == chunk {
-            return Some(i);
-        }
-    }
-    None
+    (start..end)
+        .rev()
+        .find(|&i| i + chunk.len() <= data.len() && &data[i..i + chunk.len()] == chunk)
 }
 
 pub fn compress_palmdoc(data: &[u8]) -> Vec<u8> {
     let mut out = Vec::new();
     let mut i = 0;
-    let ldata = data.len();
+    let len = data.len();
 
-    while i < ldata {
-        if i > 10 && (ldata - i) > 10 {
+    while i < len {
+        if i > 10 && (len - i) > 10 {
             let mut chunk = vec![];
             let mut match_index = None;
 
@@ -46,29 +43,27 @@ pub fn compress_palmdoc(data: &[u8]) -> Vec<u8> {
             }
         }
 
-        let ch = data[i];
+        let byte = data[i];
         i += 1;
 
-        if ch == b' ' && (i + 1) < ldata {
-            let onch = data[i];
-            if onch >= 0x40 && onch < 0x80 {
-                out.write_all(&[(onch ^ 0x80) as u8]).unwrap();
+        if byte == b' ' && (i + 1) < len {
+            if (0x40..0x80).contains(&data[i]) {
+                out.write_all(&[(data[i] ^ 0x80)]).unwrap();
                 i += 1;
                 continue;
             }
         }
 
-        if ch == 0 || (ch > 8 && ch < 0x80) {
-            out.write_all(&[ch]).unwrap();
+        if byte == 0 || (byte > 8 && byte < 0x80) {
+            out.write_all(&[byte]).unwrap();
         } else {
             let mut j = i;
-            let mut binseq = vec![ch];
+            let mut binseq = vec![byte];
 
-            while j < ldata && binseq.len() < 8 {
+            while j < len && binseq.len() < 8 {
                 let ch = data[j];
-                let och = ch;
 
-                if och == 0 || (och > 8 && och < 0x80) {
+                if ch == 0 || (ch > 8 && ch < 0x80) {
                     break;
                 }
 
@@ -86,49 +81,44 @@ pub fn compress_palmdoc(data: &[u8]) -> Vec<u8> {
 }
 
 fn decompress_palmdoc(data: Vec<u8>) -> Vec<u8> {
-    let length = data.len();
+    // Adapted from https://metacpan.org/release/AZED/EBook-Tools-0.3.3/source/lib/EBook/Tools/PalmDoc.pm
+    let len = data.len();
     let mut offset = 0;
-    let mut lz77: u16;
-    let mut lz77offset: usize;
-    let mut lz77length: usize;
-    let mut lz77pos: usize;
-    let mut text = Vec::new();
-    let mut textlength: usize;
-    let mut textpos: usize;
+    let mut uncompressed = Vec::new();
 
-    while offset < length {
+    while offset < len {
         let byte = data[offset];
         offset += 1;
 
         if byte == 0 {
             // Nulls are literal
-            text.push(byte);
+            uncompressed.push(byte);
         } else if byte <= 8 {
             // Next byte is literal
-            text.extend_from_slice(&data[offset..offset + byte as usize]);
+            uncompressed.extend_from_slice(&data[offset..offset + byte as usize]);
             offset += byte as usize;
         } else if byte <= 0x7f {
             // Values from 0x09 through 0x7f are literal
-            text.push(byte);
+            uncompressed.push(byte);
         } else if byte <= 0xbf {
             // Data is LZ77-compressed
             offset += 1;
 
-            if offset > length {
+            if offset > len {
                 println!("WARNING: offset to LZ77 bits is outside of the data");
                 return Vec::new();
             }
 
-            lz77 = u16::from_be_bytes([data[offset - 2], data[offset - 1]]);
+            let mut lz77 = u16::from_be_bytes([data[offset - 2], data[offset - 1]]);
 
             // Leftmost two bits are ID bits and need to be dropped
             lz77 &= 0x3fff;
 
             // Length is rightmost 3 bits + 3
-            lz77length = ((lz77 & 0x0007) as usize) + 3;
+            let lz77length = ((lz77 & 0x0007) as usize) + 3;
 
             // Remaining 11 bits are offset
-            lz77offset = (lz77 >> 3) as usize;
+            let lz77offset = (lz77 >> 3) as usize;
 
             if lz77offset < 1 {
                 println!("WARNING: LZ77 decompression offset is invalid!");
@@ -136,23 +126,23 @@ fn decompress_palmdoc(data: Vec<u8>) -> Vec<u8> {
             }
 
             // Getting text from the offset
-            textlength = text.len();
+            let mut textlength = uncompressed.len();
             for lz77pos in 0..lz77length {
                 println!(
                     "textlength: {}, lz77offset: {}, lz77pos: {}, current: {:?}",
-                    textlength, lz77offset, lz77pos, text
+                    textlength, lz77offset, lz77pos, uncompressed
                 );
-                textpos = textlength - lz77offset;
-                text.push(text[textpos]);
+                let textpos = textlength - lz77offset;
+                uncompressed.push(uncompressed[textpos]);
                 textlength += 1;
             }
         } else {
             // 0xc0 - 0xff are single characters (XOR 0x80) preceded by a space
-            text.push(b' ');
-            text.push(byte ^ 0x80);
+            uncompressed.push(b' ');
+            uncompressed.push(byte ^ 0x80);
         }
     }
-    text
+    uncompressed
 }
 
 #[cfg(test)]
@@ -212,13 +202,4 @@ mod tests {
             assert_eq!(decompressed, expected);
         }
     }
-
-    // #[test]
-    // fn test_roundtrip() {
-    //     for (input, _) in get_calibre_testcases() {
-    //         let compressed = compress_palmdoc(&input);
-    //         let decompressed = decompress_palmdoc(compressed);
-    //         assert_eq!(decompressed, input);
-    //     }
-    // }
 }
