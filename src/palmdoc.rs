@@ -188,11 +188,6 @@ mod tests {
     fn test_decompress_palmdoc() {
         for (expected, compressed) in get_calibre_testcases() {
             let decompressed = decompress_palmdoc(compressed);
-            println!(
-                "decompressed: {:?}, expected: {:?}",
-                String::from_utf8_lossy(&decompressed),
-                String::from_utf8_lossy(&expected)
-            );
             assert_eq!(decompressed, expected);
         }
     }
