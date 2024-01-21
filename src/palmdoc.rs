@@ -73,7 +73,7 @@ pub fn compress_palmdoc(data: &[u8]) -> Vec<u8> {
     out
 }
 
-pub fn decompress_palmdoc(data: Vec<u8>) -> Vec<u8> {
+pub fn decompress_palmdoc(data: &[u8]) -> Vec<u8> {
     // Adapted from https://metacpan.org/release/AZED/EBook-Tools-0.3.3/source/lib/EBook/Tools/PalmDoc.pm
     let len = data.len();
     let mut offset = 0;
@@ -182,7 +182,7 @@ mod tests {
     #[test]
     fn test_decompress_palmdoc() {
         for (expected, compressed) in get_calibre_testcases() {
-            let decompressed = decompress_palmdoc(compressed);
+            let decompressed = decompress_palmdoc(&compressed);
             assert_eq!(decompressed, expected);
         }
     }
