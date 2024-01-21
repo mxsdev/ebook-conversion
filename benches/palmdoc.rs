@@ -2,26 +2,44 @@ use criterion::{black_box, criterion_group, criterion_main, Criterion};
 use ebook_conversion::palmdoc::compress_palmdoc;
 use lipsum::lipsum;
 
-fn palmdoc_compression(c: &mut Criterion) {
-    let input = lipsum(2048);
-    let input = input.as_bytes();
+fn random_worst_case(c: &mut Criterion) {
+    let input = (0..4096).map(|_| rand::random::<u8>()).collect::<Vec<_>>();
 
-    c.bench_function("palmdoc compression", |b| {
-        b.iter(|| compress_palmdoc(black_box(&input)))
-    });
-}
+    let mut group = c.benchmark_group("palmdoc random");
+    group.throughput(criterion::Throughput::Bytes(input.len() as u64));
+    group.bench_function("decompress", |b| {
+        let compressed = compress_palmdoc(&input);
 
-fn palmdoc_decompression(c: &mut Criterion) {
-    let input = lipsum(4096);
-    let input = input.as_bytes();
-    let compressed = compress_palmdoc(&input);
-
-    c.bench_function("palmdoc decompression", |b| {
         b.iter(|| {
             ebook_conversion::palmdoc::decompress_palmdoc(black_box(&compressed));
         })
     });
+    group.bench_function("compress", |b| {
+        b.iter(|| {
+            ebook_conversion::palmdoc::compress_palmdoc(black_box(&input));
+        })
+    });
 }
 
-criterion_group!(benches, palmdoc_compression, palmdoc_decompression);
+fn lorem_ipsum(c: &mut Criterion) {
+    let lorem_ipsum = lipsum(4096);
+    let lorem_ipsum = lorem_ipsum.as_bytes();
+
+    let mut group = c.benchmark_group("palmdoc lorem ipsum");
+    group.throughput(criterion::Throughput::Bytes(lorem_ipsum.len() as u64));
+    group.bench_function("decompress", |b| {
+        let compressed = compress_palmdoc(&lorem_ipsum);
+
+        b.iter(|| {
+            ebook_conversion::palmdoc::decompress_palmdoc(black_box(&compressed));
+        })
+    });
+    group.bench_function("compress", |b| {
+        b.iter(|| {
+            ebook_conversion::palmdoc::compress_palmdoc(black_box(&lorem_ipsum));
+        })
+    });
+}
+
+criterion_group!(benches, random_worst_case, lorem_ipsum);
 criterion_main!(benches);

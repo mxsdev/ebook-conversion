@@ -14,6 +14,8 @@ harness = false
 hex = "0.4.3"
 criterion = { version = "0.5", features = ["html_reports"] }
 lipsum = "0.9.0"
+rand = "0.8.5"
 
 [dependencies]
+byteorder = "1.5.0"
 memchr = "2.7.1"
