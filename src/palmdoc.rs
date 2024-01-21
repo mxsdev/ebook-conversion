@@ -1,10 +1,5 @@
+use memchr::memmem;
 use std::io::Write;
-
-fn rindex(data: &[u8], chunk: &[u8], start: usize, end: usize) -> Option<usize> {
-    (start..end)
-        .rev()
-        .find(|&i| i + chunk.len() <= data.len() && &data[i..i + chunk.len()] == chunk)
-}
 
 pub fn compress_palmdoc(data: &[u8]) -> Vec<u8> {
     let mut out = Vec::new();
@@ -18,7 +13,7 @@ pub fn compress_palmdoc(data: &[u8]) -> Vec<u8> {
 
             for j in (3..=10).rev() {
                 chunk = data[i..(i + j)].to_vec();
-                if let Some(match_i) = rindex(data, &chunk, 0, i) {
+                if let Some(match_i) = memmem::rfind(&data[..i], &chunk) {
                     match_index = Some(match_i);
                 } else {
                     continue;
