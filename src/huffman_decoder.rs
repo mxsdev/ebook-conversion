@@ -13,6 +13,8 @@ impl HuffmanDecoder {
         let mut data = input.to_vec();
         data.extend_from_slice(&[0, 0, 0, 0, 0, 0, 0, 0]);
 
+        println!("data: {:?}", data);
+
         let mut r = Cursor::new(data.as_slice());
 
         // X is a sliding window of 64 bits from data.
@@ -29,11 +31,18 @@ impl HuffmanDecoder {
                 n += 32;
             }
 
-            println!("x: {:b} {}", x, n);
+            println!("x: {:b} {} {}", x, n, x);
 
             let code = (x >> n) & ((1 << 32) - 1);
-            println!("code: {:b} {} {:?}", code, code >> 24, self.table.code_dict[(code >> 24) as usize]);
+            println!(
+                "code: {:b} {} {:?}",
+                code,
+                code >> 24,
+                self.table.code_dict[(code >> 24) as usize]
+            );
             let (mut code_len, term, mut max_code) = self.table.code_dict[(code >> 24) as usize];
+
+            println!("term: {:?} {:?}", term, max_code);
 
             if !term {
                 while code < self.table.min_codes[code_len as usize] as u64 {
@@ -41,6 +50,8 @@ impl HuffmanDecoder {
                 }
                 max_code = self.table.max_codes[code_len as usize];
             }
+
+            println!("code len: {:?} {:?}", code_len, bits_left);
 
             n -= code_len as i8;
             bits_left = match bits_left.checked_sub(code_len as usize) {

@@ -23,36 +23,29 @@ impl HuffmanEncoder {
 
         // println!("{:?}", self.table.max_codes);
 
-        // let mut writer = huffman_coding::HuffmanWriter::new(&mut self.compressed, &tree);
-        // writer.write_all(data).unwrap();
-
-
-        let mut n = 32i8;
+        let example_code_dict_index = 12u8;
         for byte in data {
-            let code = ((*byte as u32) << 24) << (n as u32);
-            self.table.code_dict[*byte as usize] = (8 as u8, true, code);
-            self.compressed.push(*byte);
+            let code = ((example_code_dict_index as u64) << 24) as u32;
+            let code = code | 0; // todo: actual code value?
+
+            // padding
+            self.table.code_dict[0] = (32 as u8, true, code);
+
+            let len = 32;
+
+            self.table.code_dict[example_code_dict_index as usize] = (len as u8, true, code);
+            self.compressed.extend_from_slice(&code.to_be_bytes()[..4]);
             self.table.dictionary[0] = Some((vec![*byte], true));
 
-            self.table.min_codes[8] = self.table.min_codes[8].min(code);
-            self.table.max_codes[8] = self.table.max_codes[8].max(code);
+            self.table.min_codes[len] = self.table.min_codes[len].min(code);
+            self.table.max_codes[len] = self.table.max_codes[len].max(code);
         }
-
-        // for byte in data {
-        //     let (item, _, len) = self.table.code_dict[*byte as usize];
-        //     println!("{:?}", &item.to_be_bytes()[..len as usize]);
-        //     self.compressed
-        //         .extend_from_slice(&item.to_be_bytes()[..len as usize]);
-        // }
-
-        // println!("{:?}", self.compressed);
     }
 
     fn generate_codes(&mut self, node: &HuffmanTree, code: BitVec<u8>) {
         match node {
             HuffmanTree::Leaf(item, prob) => {
-                self.table.code_dict[*item as usize] =
-                    (code.len() as u8, true, code.load::<u32>());
+                self.table.code_dict[*item as usize] = (code.len() as u8, true, code.load::<u32>());
             }
             HuffmanTree::Node(left, right) => {
                 let mut left_code = code.clone();
@@ -122,7 +115,7 @@ mod tests {
             table: HuffmanTable::default(),
             compressed: vec![],
         };
-        let data = b"h";
+        let data = b"hhhhhhhhh";
         encoder.pack(data);
         let (table, packed) = encoder.finish();
         // assert_eq!(packed, vec![0x48, 0x65, 0x6c, 0x6c, 0x6f]);

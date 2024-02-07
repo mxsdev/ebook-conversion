@@ -11,6 +11,7 @@ pub fn compress_palmdoc(data: &[u8]) -> Vec<u8> {
             let mut chunk = vec![];
             let mut match_index = None;
 
+            // todo: can run memmem once instead of in loop?
             for j in (3..=10).rev() {
                 chunk = data[i..(i + j)].to_vec();
                 if let Some(match_i) = memmem::rfind(&data[..i], &chunk) {
