@@ -13,10 +13,10 @@ pub struct HuffmanTable {
 impl Default for HuffmanTable {
     fn default() -> Self {
         Self {
-            dictionary: vec![],
+            dictionary: vec![None; 256],
             code_dict: [(0, false, 0); 256],
-            min_codes: [0; 33],
-            max_codes: [u32::MAX; 33],
+            min_codes: [u32::MAX; 33],
+            max_codes: [0; 33],
         }
     }
 }

@@ -2,12 +2,12 @@ use super::huffman::HuffmanTable;
 use byteorder::{BigEndian, ReadBytesExt};
 use std::io::Cursor;
 
-struct HuffmanDecoder {
-    table: HuffmanTable,
+pub struct HuffmanDecoder {
+    pub table: HuffmanTable,
 }
 
 impl HuffmanDecoder {
-    fn unpack(&mut self, input: &[u8]) -> Vec<u8> {
+    pub fn unpack(&mut self, input: &[u8]) -> Vec<u8> {
         // Need len.
         let mut bits_left = input.len() * 8;
         let mut data = input.to_vec();
@@ -29,7 +29,10 @@ impl HuffmanDecoder {
                 n += 32;
             }
 
+            println!("x: {:b} {}", x, n);
+
             let code = (x >> n) & ((1 << 32) - 1);
+            println!("code: {:b} {} {:?}", code, code >> 24, self.table.code_dict[(code >> 24) as usize]);
             let (mut code_len, term, mut max_code) = self.table.code_dict[(code >> 24) as usize];
 
             if !term {
@@ -45,7 +48,12 @@ impl HuffmanDecoder {
                 None => break,
             };
 
+            println!(
+                "max_code: {:?}, code: {:?}, code_len: {:?}",
+                max_code, code, code_len
+            );
             let index = ((max_code as u64 - code) >> (32 - code_len)) as usize;
+            println!("index: {:?}", index);
             let (mut slice, flag) = self.table.dictionary[index].clone().unwrap();
             if !flag {
                 self.table.dictionary[index] = None;
@@ -54,6 +62,8 @@ impl HuffmanDecoder {
             }
             unpacked.extend_from_slice(&slice);
         }
+
+        println!("unpacked: {:?}", unpacked);
 
         unpacked
     }
