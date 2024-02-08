@@ -23,23 +23,22 @@ impl HuffmanEncoder {
 
         // println!("{:?}", self.table.max_codes);
 
-        let example_code_dict_index = 12u8;
         for byte in data {
-            let code = ((example_code_dict_index as u64) << 24) as u32;
-            let code = code | 0; // todo: actual code value?
+            let code_dict_index = byte - 1;
+            let dictionary_index = byte + 1;
 
-            // padding
-            self.table.code_dict[0] = (32 as u8, true, code);
+            // Shift to high 8 bits
+            let code: u32 = (code_dict_index as u32) << 24;
+            self.table.code_dict[code_dict_index as usize] =
+                (32, true, code + dictionary_index as u32);
+            self.table.dictionary[dictionary_index as usize] = Some((vec![*byte], true));
 
-            let len = 32;
-
-            self.table.code_dict[example_code_dict_index as usize] = (len as u8, true, code);
-            self.compressed.extend_from_slice(&code.to_be_bytes()[..4]);
-            self.table.dictionary[0] = Some((vec![*byte], true));
-
-            self.table.min_codes[len] = self.table.min_codes[len].min(code);
-            self.table.max_codes[len] = self.table.max_codes[len].max(code);
+            self.compressed.write_all(&code.to_be_bytes()).unwrap();
         }
+
+        // Padding
+        self.table.code_dict[0] = (8, true, 0);
+        self.table.dictionary[0] = Some((vec![], true));
     }
 
     fn generate_codes(&mut self, node: &HuffmanTree, code: BitVec<u8>) {
@@ -115,7 +114,7 @@ mod tests {
             table: HuffmanTable::default(),
             compressed: vec![],
         };
-        let data = b"hhhhhhhhh";
+        let data = b"hiiiiiiiiio";
         encoder.pack(data);
         let (table, packed) = encoder.finish();
         // assert_eq!(packed, vec![0x48, 0x65, 0x6c, 0x6c, 0x6f]);
