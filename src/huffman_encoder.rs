@@ -6,7 +6,8 @@ use std::{collections::HashMap, io::Write};
 
 struct HuffmanEncoder {
     table: HuffmanTable,
-    compressed: Vec<u8>,
+    byte_to_code: HashMap<u8, BitVec<u8>>,
+    compressed: BitVec<u8, Msb0>,
 }
 
 impl HuffmanEncoder {
@@ -19,34 +20,73 @@ impl HuffmanEncoder {
         let tree = huffman_coding::HuffmanTree::from_data(data);
         // self.generate_codes(&tree, BitVec::new());
         // self.generate_min_max_depths();
-        self.build_dictionary(&tree, BitVec::new());
+        // self.build_dictionary(&tree, BitVec::new());
+        self.generate_byte_to_code_mapping(&tree, BitVec::new());
+
+        // Temporary hack to make all codes uniform length and unique
+        let mut i: u8 = 1;
+        for (_, code) in self.byte_to_code.iter_mut() {
+            *code = (BitVec::from_element(i)[0..4]).to_bitvec();
+            i += 1;
+        }
+
+        println!("{:?}", self.byte_to_code);
+
+        for i in 0..256 {
+            self.table.code_dict[i] = (4, true, u32::MAX);
+        }
 
         for byte in data {
-            let dictionary_index = self
-                .table
-                .dictionary
-                .iter()
-                .enumerate()
-                .find(|(_, x)| {
-                    if let Some((vec, _)) = x {
-                        return vec[0] == *byte;
-                    } else {
-                        return false;
-                    }
-                })
-                .unwrap()
-                .0;
+            let code = self.byte_to_code.get(byte).unwrap();
 
-            println!("using dictionary index {}", dictionary_index);
+            let dictionary_index = code.load::<u8>(); // << (8 - code.len());
 
-            let partial_code: u8 = u8::MAX - dictionary_index as u8;
-            self.compressed.write(&[partial_code]).unwrap();
-            self.table.code_dict[partial_code as usize] = (8, true, u32::MAX);
+            println!("dictionary index: {}", dictionary_index);
+            self.table.dictionary[dictionary_index as usize] = Some((vec![*byte], true));
+
+            let shifted_code = (dictionary_index as u32) << (32 - code.len());
+            let mut partial_code: u32 = u32::MAX - shifted_code;
+
+            // if self.compressed.len() % 8 != 0 {
+            //     let previous_unused_code = self
+            //         .compressed
+            //         .iter()
+            //         .rev()
+            //         .take((8 - (self.compressed.len() % 8)))
+            //         .collect::<BitVec>()
+            //         .load::<u8>();
+
+            //     // partial_code -= previous_unused_code;
+            // }
+
+            println!("partial code: {:b}", partial_code);
+            let partial_code: BitVec<_, Msb0> = BitVec::from_element(partial_code);
+            println!("sliced: {:?}", partial_code[0..code.len()].to_bitvec());
+
+            self.compressed
+                .append(&mut partial_code[0..code.len()].to_bitvec());
+            println!("compressed: {:b}", self.compressed.load::<u64>());
         }
 
         // Padding
         self.table.code_dict[0] = (8, true, 0);
-        self.table.dictionary[0] = Some((vec![], true));
+        // self.table.dictionary[0] = Some((vec![], true));
+    }
+
+    fn generate_byte_to_code_mapping(&mut self, node: &HuffmanTree, current_code: BitVec<u8>) {
+        match node {
+            HuffmanTree::Leaf(item, prob) => {
+                self.byte_to_code.insert(*item, current_code);
+            }
+            HuffmanTree::Node(left, right) => {
+                let mut left_code = current_code.clone();
+                left_code.push(false);
+                self.generate_byte_to_code_mapping(left, left_code);
+                let mut right_code = current_code.clone();
+                right_code.push(true);
+                self.generate_byte_to_code_mapping(right, right_code);
+            }
+        }
     }
 
     fn generate_codes(&mut self, node: &HuffmanTree, code: BitVec<u8>) {
@@ -108,7 +148,7 @@ impl HuffmanEncoder {
     }
 
     pub fn finish(self) -> (HuffmanTable, Vec<u8>) {
-        (self.table, self.compressed)
+        (self.table, self.compressed.into_vec())
     }
 }
 
@@ -122,9 +162,10 @@ mod tests {
     fn test_huffman_encoder() {
         let mut encoder = HuffmanEncoder {
             table: HuffmanTable::default(),
-            compressed: vec![],
+            compressed: BitVec::new(),
+            byte_to_code: HashMap::new(),
         };
-        let data = b"hey there";
+        let data = b"heyyasdfasdofi";
         encoder.pack(data);
         let (table, packed) = encoder.finish();
         // assert_eq!(packed, vec![0x48, 0x65, 0x6c, 0x6c, 0x6f]);

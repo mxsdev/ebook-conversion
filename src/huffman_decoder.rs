@@ -60,8 +60,11 @@ impl HuffmanDecoder {
             };
 
             println!(
-                "max_code: {:?}, code: {:?}, code_len: {:?}",
-                max_code, code, code_len
+                "max_code: {:?}, code: {:?}, difference: {:b}, code_len: {:?}",
+                max_code,
+                code,
+                max_code - code as u32,
+                code_len
             );
             let index = ((max_code as u64 - code) >> (32 - code_len)) as usize;
             println!("index: {:?}", index);
