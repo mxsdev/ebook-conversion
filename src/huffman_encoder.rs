@@ -19,34 +19,30 @@ impl HuffmanEncoder {
         let tree = huffman_coding::HuffmanTree::from_data(data);
         // self.generate_codes(&tree, BitVec::new());
         // self.generate_min_max_depths();
-        // self.build_dictionary(&tree, BitVec::new());
+        self.build_dictionary(&tree, BitVec::new());
 
         for byte in data {
-            let partial_code: u8 = u8::MAX - byte;
+            let dictionary_index = self
+                .table
+                .dictionary
+                .iter()
+                .enumerate()
+                .find(|(_, x)| {
+                    if let Some((vec, _)) = x {
+                        return vec[0] == *byte;
+                    } else {
+                        return false;
+                    }
+                })
+                .unwrap()
+                .0;
+
+            println!("using dictionary index {}", dictionary_index);
+
+            let partial_code: u8 = u8::MAX - dictionary_index as u8;
             self.compressed.write(&[partial_code]).unwrap();
             self.table.code_dict[partial_code as usize] = (8, true, u32::MAX);
-            self.table.dictionary[*byte as usize] = Some((vec![*byte], true));
         }
-
-        // println!("{:?}", self.table.max_codes);
-
-        // for byte in data {
-        //     let code_dict_index = *byte - 1;
-
-        //     // Shift to high 8 bits
-        //     // let code: u32 = (code_dict_index as u32) << 24;
-        //     let code: u8 = byte + 1;
-        //     let code_bits = 8;
-        //     self.table.code_dict[code as usize] = (
-        //         code_bits,
-        //         true,
-        //         (code as u32 + dictionary_index as u32) << (32 - code_bits + 1),
-        //     );
-        //     self.table.dictionary[dictionary_index as usize] = Some((vec![*byte], true));
-        //     println!("dictionary index: {}", dictionary_index);
-
-        //     self.compressed.write_all(&code.to_be_bytes()).unwrap();
-        // }
 
         // Padding
         self.table.code_dict[0] = (8, true, 0);
@@ -96,7 +92,8 @@ impl HuffmanEncoder {
         match node {
             HuffmanTree::Leaf(item, _) => {
                 let flag = prefix.is_empty();
-                self.table.dictionary[prefix.load::<u8>() as usize] = Some((vec![*item], true));
+                // todo: how to remove + 1 / padding?
+                self.table.dictionary[prefix.load::<u8>() as usize + 1] = Some((vec![*item], true));
             }
             HuffmanTree::Node(left, right) => {
                 let mut left_prefix = prefix.clone();
@@ -139,6 +136,7 @@ mod tests {
         let mut decoder = HuffmanDecoder { table };
 
         let unpacked = decoder.unpack(&packed);
+        println!("unpacked: {}", String::from_utf8_lossy(&unpacked));
         assert_eq!(unpacked, data);
     }
 }
