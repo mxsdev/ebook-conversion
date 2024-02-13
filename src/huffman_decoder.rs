@@ -6,6 +6,14 @@ pub struct HuffmanDecoder {
     pub table: HuffmanTable,
 }
 
+impl Default for HuffmanDecoder {
+    fn default() -> Self {
+        Self {
+            table: HuffmanTable::default(),
+        }
+    }
+}
+
 impl HuffmanDecoder {
     pub fn unpack(&mut self, input: &[u8]) -> Vec<u8> {
         // Need len.

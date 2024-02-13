@@ -4,14 +4,28 @@ use bitvec::prelude::*;
 use huffman_coding::HuffmanTree;
 use std::{collections::HashMap, io::Write};
 
-struct HuffmanEncoder {
+pub struct HuffmanEncoder {
     table: HuffmanTable,
     byte_to_code: HashMap<u8, BitVec<u8>>,
     compressed: BitVec<u8, Msb0>,
 }
 
+impl Default for HuffmanEncoder {
+    fn default() -> Self {
+        Self {
+            table: HuffmanTable::default(),
+            byte_to_code: HashMap::new(),
+            compressed: BitVec::new(),
+        }
+    }
+}
+
 impl HuffmanEncoder {
     pub fn pack(&mut self, data: &[u8]) {
+        if data.is_empty() {
+            return;
+        }
+
         let mut weights = HashMap::new();
         for byte in data {
             *weights.entry(*byte).or_insert(0) += 1;

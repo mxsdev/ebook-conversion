@@ -31,3 +31,9 @@ name = "palmdoc_decompression"
 path = "fuzz_targets/palmdoc_decompression.rs"
 test = false
 doc = false
+
+[[bin]]
+name = "huffman_correctness"
+path = "fuzz_targets/huffman_correctness.rs"
+test = false
+doc = false
