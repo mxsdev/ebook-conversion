@@ -24,17 +24,19 @@ impl HuffmanEncoder {
         self.generate_byte_to_code_mapping(&tree, BitVec::new());
 
         // Temporary hack to make all codes uniform length and unique
-        let mut i: u8 = 1;
-        for (_, code) in self.byte_to_code.iter_mut() {
-            *code = (BitVec::from_element(i)[0..4]).to_bitvec();
-            i += 1;
-        }
+        // let mut i: u8 = 1;
+        // for (_, code) in self.byte_to_code.iter_mut() {
+        //     *code = (BitVec::from_element(i)[0..4]).to_bitvec();
+        //     i += 1;
+        // }
 
         println!("{:?}", self.byte_to_code);
 
-        for i in 0..256 {
-            self.table.code_dict[i] = (4, true, u32::MAX);
-        }
+        // for i in 0..256 {
+        //     self.table.code_dict[i] = (4, true, u32::MAX);
+        // }
+
+        let mut pending_code_dict_entries: Vec<u8> = vec![];
 
         for byte in data {
             let code = self.byte_to_code.get(byte).unwrap();
@@ -59,13 +61,53 @@ impl HuffmanEncoder {
             //     // partial_code -= previous_unused_code;
             // }
 
-            println!("partial code: {:b}", partial_code);
+            // println!("partial code: {:b}", partial_code);
             let partial_code: BitVec<_, Msb0> = BitVec::from_element(partial_code);
-            println!("sliced: {:?}", partial_code[0..code.len()].to_bitvec());
+            // println!("sliced: {:?}", partial_code[0..code.len()].to_bitvec());
 
             self.compressed
                 .append(&mut partial_code[0..code.len()].to_bitvec());
-            println!("compressed: {:b}", self.compressed.load::<u64>());
+            // println!("compressed: {:b}", self.compressed.load::<u64>());
+
+            // let mut last_8_bits_fixed_window = self.compressed
+            //     [self.compressed.len() - (self.compressed.len() % 8)..]
+            //     .to_bitvec()
+            //     .load::<u8>();
+
+            // if self.compressed.len() < 8 {
+            //     last_8_bits_fixed_window <<= (8 - self.compressed.len());
+            //     println!(
+            //         "shifting by {}, result: {:b}",
+            //         8 - self.compressed.len(),
+            //         last_8_bits_fixed_window
+            //     );
+            // }
+
+            // self.table.code_dict[last_8_bits_fixed_window as usize] =
+            //     (code.len() as u8, true, u32::MAX);
+
+            pending_code_dict_entries.push(code.len() as u8);
+        }
+
+        let mut pos = 0;
+        for len in pending_code_dict_entries {
+            let last_8_bits = self.compressed[pos..self.compressed.len().min(pos + 8)].to_bitvec();
+            let num_of_bits = last_8_bits.len();
+            let last_8_bits = last_8_bits.load::<u8>();
+            // .load::<u8>();
+            // println!("last 8 bits pre shif: {:b}", last_8_bits);
+            let last_8_bits = last_8_bits << (8 - num_of_bits);
+
+            println!("last 8 bits after shif: {:b}", last_8_bits);
+
+            self.table.code_dict[last_8_bits as usize] = (len, true, u32::MAX);
+            pos += len as usize;
+        }
+
+        for pair in self.table.code_dict.iter().enumerate() {
+            if (*pair.1).0 != 0 {
+                println!("code dict {:?}, bit index: {:b}", pair, pair.0);
+            }
         }
 
         // Padding
@@ -76,6 +118,8 @@ impl HuffmanEncoder {
     fn generate_byte_to_code_mapping(&mut self, node: &HuffmanTree, current_code: BitVec<u8>) {
         match node {
             HuffmanTree::Leaf(item, prob) => {
+                // todo: avoid +1
+                let current_code = BitVec::from_element(current_code.load::<u8>() + 1);
                 self.byte_to_code.insert(*item, current_code);
             }
             HuffmanTree::Node(left, right) => {
@@ -165,7 +209,7 @@ mod tests {
             compressed: BitVec::new(),
             byte_to_code: HashMap::new(),
         };
-        let data = b"heyyasdfasdofi";
+        let data = b"hey";
         encoder.pack(data);
         let (table, packed) = encoder.finish();
         // assert_eq!(packed, vec![0x48, 0x65, 0x6c, 0x6c, 0x6f]);
