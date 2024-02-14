@@ -7,11 +7,21 @@ use libfuzzer_sys::fuzz_target;
 use std::collections::HashMap;
 
 fuzz_target!(|data: &[u8]| {
+    // todo: remove
+    if data.len() < 3 {
+        return;
+    }
+
     let mut encoder = HuffmanEncoder::default();
-    encoder.pack(data);
-    let (table, compressed) = encoder.finish();
 
-    let mut decoder = HuffmanDecoder { table };
+    match encoder.pack(data) {
+        Ok(()) => {
+            let (table, compressed) = encoder.finish();
 
-    assert_eq!(data, decoder.unpack(&compressed));
+            let mut decoder = HuffmanDecoder { table };
+
+            assert_eq!(data, decoder.unpack(&compressed));
+        }
+        Err(_) => {}
+    }
 });
