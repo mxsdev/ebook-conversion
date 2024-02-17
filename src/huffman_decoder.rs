@@ -39,11 +39,11 @@ impl HuffmanDecoder {
                 n += 32;
             }
 
-            println!("x: {:b} {} {}", x, n, x);
+            println!("x: {:064b} {} {}", x, n, x);
 
             let code = (x >> n) & ((1 << 32) - 1);
             println!(
-                "code: {:b} shifted: {} shifted bit: {:b} code dict: {:?}",
+                "code: {:b} shifted: {} shifted bit: {:08b} code dict: {:?}",
                 code,
                 code >> 24,
                 code >> 24,

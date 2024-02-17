@@ -31,6 +31,7 @@ impl Default for HuffmanEncoder {
 
 impl HuffmanEncoder {
     pub fn pack(&mut self, data: &[u8]) -> Result<(), HuffmanEncodingError> {
+        println!("data: {:?}", data);
         let mut weights: HashMap<u16, i32> = HashMap::new();
         for byte in data {
             *weights.entry(*byte as u16).or_insert(0) += 1;
@@ -47,25 +48,7 @@ impl HuffmanEncoder {
 
         let (book, tree) = CodeBuilder::from_iter(weights).finish();
 
-        // let tree = huffman_coding::HuffmanTree::from_data(data);
-        // self.generate_codes(&tree, BitVec::new());
-        // self.generate_min_max_depths();
-        // self.build_dictionary(&tree, BitVec::new());
-        // self.generate_byte_to_code_mapping(&tree, BitVec::new());
-
-        // Temporary hack to make all codes uniform length and unique
-        // let mut i: u8 = 1;
-        // for (_, code) in self.byte_to_code.iter_mut() {
-        //     *code = (BitVec::from_element(i)[0..4]).to_bitvec();
-        //     i += 1;
-        // }
-        //
-
         for symbol in book.symbols() {
-            // if *symbol == null_padding_symbol {
-            //     continue;
-            // }
-
             let code = book.get(symbol).unwrap();
             let mut parsed_code: BitVec<u8> = BitVec::new();
             for bit in code {
@@ -127,11 +110,17 @@ impl HuffmanEncoder {
         for len in pending_code_dict_entries {
             let last_8_bits = self.compressed[pos..self.compressed.len().min(pos + 8)].to_bitvec();
             let num_of_bits = last_8_bits.len();
-            let last_8_bits = last_8_bits.load::<u8>();
+            let mut last_8_bits = last_8_bits.load_be::<u8>();
 
-            let last_8_bits = last_8_bits << (8 - num_of_bits);
+            // todo: necessary?
+            if num_of_bits < 8 {
+                last_8_bits = last_8_bits << (8 - num_of_bits);
+            }
 
-            println!("last 8 bits after shif: {:b}", last_8_bits);
+            println!(
+                "last 8 bits after shif: {:08b}, length: {}",
+                last_8_bits, len
+            );
 
             self.table.code_dict[last_8_bits as usize] = (len, true, u32::MAX);
             pos += len as usize;
@@ -139,7 +128,7 @@ impl HuffmanEncoder {
 
         for pair in self.table.code_dict.iter().enumerate() {
             if (*pair.1).0 != 0 {
-                println!("code dict {:?}, bit index: {:b}", pair, pair.0);
+                println!("code dict {:?}, bit index: {:08b}", pair, pair.0);
             }
         }
 
