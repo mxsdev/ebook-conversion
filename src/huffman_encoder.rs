@@ -3,7 +3,10 @@ use crate::huffman::HuffmanTable;
 use bitvec::prelude::*;
 // use huffman_coding::HuffmanTree;
 use huffman_compress::{Book, CodeBuilder, Tree};
-use std::{collections::HashMap, io::Write};
+use std::{
+    collections::{HashMap, HashSet},
+    io::Write,
+};
 use thiserror::Error;
 
 #[derive(Error, Debug)]
@@ -15,6 +18,7 @@ pub enum HuffmanEncodingError {
 
 pub struct HuffmanEncoder {
     table: HuffmanTable,
+    code_length_to_max_code: HashMap<usize, u32>,
     byte_to_code: HashMap<u16, BitVec<u8>>,
     compressed: BitVec<u8, Msb0>,
 }
@@ -23,6 +27,7 @@ impl Default for HuffmanEncoder {
     fn default() -> Self {
         Self {
             table: HuffmanTable::default(),
+            code_length_to_max_code: HashMap::new(),
             byte_to_code: HashMap::new(),
             compressed: BitVec::new(),
         }
@@ -37,7 +42,7 @@ impl HuffmanEncoder {
             *weights.entry(*byte as u16).or_insert(0) += 1;
         }
 
-        // the actual value doesn't matter here, it won't collide with anything
+        // the actual value doesn't matter here, it won't collide with anything because it's u16 vs u8
         let null_padding_symbol: u16 = 0xffff;
         weights.insert(null_padding_symbol, 1);
 
@@ -58,16 +63,58 @@ impl HuffmanEncoder {
             self.byte_to_code.insert(*symbol, parsed_code);
         }
 
-        // println!(
-        //     "{:?}",
-        //     book.symbols()
-        //         .map(|sym| (sym, book.get(sym).unwrap().len()))
-        //         .collect::<Vec<_>>()
-        // );
+        // let mut sorted_byte_to_code: Vec<_> = self.byte_to_code.iter().collect();
+        // sorted_byte_to_code.sort_by(|a, b| a.1.len().cmp(&b.1.len()));
 
-        // for i in 0..256 {
-        //     self.table.code_dict[i] = (4, true, u32::MAX);
+        // for (i, (_, code)) in sorted_byte_to_code.iter().enumerate() {
+        //     self.table.code_dict[self.table.code_dict.len() - 1 - i] =
+        //         (code.len() as u8, true, u32::MAX);
         // }
+
+        // let codes_to_write = data
+        //     .iter()
+        //     .map(|byte| (*self.byte_to_code.get(&(*byte as u16)).unwrap()).clone())
+        //     .collect::<Vec<BitVec<u8>>>();
+
+        // for code in codes_to_write {
+        //     let last_dangling_bits =
+        //         &self.compressed[self.compressed.len() - (self.compressed.len() % 8)..];
+
+        // }
+
+        // loop {
+        //     let mut pending_codes_to_write: Vec<BitVec<u8>> = Vec::new();
+
+        //     while pending_codes_to_write
+        //         .iter()
+        //         .map(|code| code.len())
+        //         .sum::<usize>()
+        //         < 8
+        //     {
+        //         pending_codes_to_write.push(codes_to_write_reverse.pop().unwrap());
+        //     }
+
+        //     println!("pending: {:?}", pending_codes_to_write);
+        //     break;
+        // }
+
+        // todo!();
+
+        let unique_code_lengths = self
+            .byte_to_code
+            .values()
+            .map(|code| code.len())
+            .collect::<HashSet<_>>();
+
+        for unique_code_length in unique_code_lengths {
+            self.compute_max_code_for_length(unique_code_length);
+        }
+
+        println!("max code: {:?}", self.code_length_to_max_code);
+
+        for (byte, code) in self.byte_to_code.clone() {
+            println!("byte: {}, code: {:?}", byte, code);
+        }
 
         let mut pending_code_dict_entries: Vec<u8> = vec![];
 
@@ -76,11 +123,11 @@ impl HuffmanEncoder {
 
             let dictionary_index = code.load::<u8>(); // << (8 - code.len());
 
-            println!("dictionary index: {}", dictionary_index);
             self.table.dictionary[dictionary_index as usize] = Some((vec![*byte], true));
 
             let shifted_code = (dictionary_index as u32) << (32 - code.len());
-            let partial_code: u32 = u32::MAX - shifted_code;
+            let partial_code: u32 =
+                self.code_length_to_max_code.get(&code.len()).unwrap() - shifted_code;
             let partial_code: BitVec<_, Msb0> = BitVec::from_element(partial_code);
 
             self.compressed
@@ -91,24 +138,35 @@ impl HuffmanEncoder {
 
         // Padding
         // todo: combine with above
-        let code = self.byte_to_code.get(&null_padding_symbol).unwrap();
+        let code = self.byte_to_code.get(&null_padding_symbol).unwrap().clone();
 
         let dictionary_index = code.load::<u8>(); // << (8 - code.len());
 
         println!("dictionary index: {}", dictionary_index);
 
+        let len = 64 - self.compressed.len() as u8;
+        self.compute_max_code_for_length(len as usize);
+
         let shifted_code = (dictionary_index as u32) << (32 - code.len());
-        let partial_code: u32 = u32::MAX - shifted_code;
+        let partial_code: u32 =
+            self.code_length_to_max_code.get(&(len as usize)).unwrap() - shifted_code;
         let partial_code: BitVec<_, Msb0> = BitVec::from_element(partial_code);
 
         self.compressed
             .append(&mut partial_code[0..code.len()].to_bitvec());
 
-        pending_code_dict_entries.push(64 - self.compressed.len() as u8);
+        pending_code_dict_entries.push(len);
+        /* end of padding */
+
+        for (len, max_code) in self.code_length_to_max_code.iter() {
+            println!("max code for length {:02}: {:032b}", len, max_code);
+        }
 
         let mut pos = 0;
         for len in pending_code_dict_entries {
             let last_8_bits = self.compressed[pos..self.compressed.len().min(pos + 8)].to_bitvec();
+            println!("last 8 bits before shift: {:?}", last_8_bits);
+
             let num_of_bits = last_8_bits.len();
             let mut last_8_bits = last_8_bits.load_be::<u8>();
 
@@ -122,7 +180,17 @@ impl HuffmanEncoder {
                 last_8_bits, len
             );
 
-            self.table.code_dict[last_8_bits as usize] = (len, true, u32::MAX);
+            if self.table.code_dict[last_8_bits as usize].0 != 0
+                && self.table.code_dict[last_8_bits as usize].0 != len
+            {
+                panic!("collision");
+            }
+
+            self.table.code_dict[last_8_bits as usize] = (
+                len,
+                true,
+                *self.code_length_to_max_code.get(&(len as usize)).unwrap(),
+            );
             pos += len as usize;
         }
 
@@ -133,6 +201,47 @@ impl HuffmanEncoder {
         }
 
         Ok(())
+    }
+
+    fn compute_max_code_for_length(&mut self, len: usize) {
+        let mut max_code = u32::MAX;
+
+        let mut codes_to_check = self
+            .byte_to_code
+            .iter()
+            // .filter(|(_, code)| code.len() == len)
+            .collect::<Vec<_>>();
+
+        if codes_to_check.is_empty() {
+            println!("adding code for null padidng symbol {}", len);
+            let null_padding_symbol: u16 = 0xffff;
+            // codes_to_check = vec![(&0, self.byte_to_code.get(&null_padding_symbol).unwrap())];
+            codes_to_check.push((&0, self.byte_to_code.get(&null_padding_symbol).unwrap()));
+        }
+
+        loop {
+            let unique_results = codes_to_check
+                .iter()
+                .map(|(_, code)| max_code - (code.load::<u8>() as u32))
+                .collect::<HashSet<u32>>();
+
+            if unique_results.len() != codes_to_check.len()
+                || self
+                    .code_length_to_max_code
+                    .values()
+                    .any(|&v| v == max_code)
+            {
+                // Subtract 1 from the top 8 bits
+                let top_8_bits_modified = ((max_code & 0xFF000000) >> 24) - 1;
+                let top_8_bits_modified = (top_8_bits_modified << 24);
+                let max_code_cleared_top_8_bits = max_code & 0x00ffffff;
+                max_code = top_8_bits_modified | max_code_cleared_top_8_bits;
+            } else {
+                break;
+            }
+        }
+
+        self.code_length_to_max_code.insert(len, max_code);
     }
 
     // fn generate_byte_to_code_mapping(&mut self, node: &HuffmanTree, current_code: BitVec<u8>) {
