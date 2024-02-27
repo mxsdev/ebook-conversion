@@ -338,6 +338,7 @@ mod tests {
             table: HuffmanTable::default(),
             compressed: BitVec::new(),
             byte_to_code: HashMap::new(),
+            ..Default::default()
         };
         let data = b"hey";
         encoder.pack(data);
